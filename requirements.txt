@@ -1,2 +1,1 @@
-mysql-connector-python-rf
-requests
+mysql-connector-python==9.6.0
