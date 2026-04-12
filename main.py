@@ -9,6 +9,7 @@ import datetime as dt
 import configparser
 import xml.etree.ElementTree as ET
 from typing import Optional
+import re
 
 import mysql.connector as mariadb
 
@@ -139,8 +140,13 @@ def main(year: str, write_db: bool) -> None:
     # Italian locale for date parsing (GEN, FEB, …)
     locale.setlocale(locale.LC_TIME, ("it", "UTF-8"))
 
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
+    with open(xml_path, "r", encoding="utf-8", errors="replace") as f:
+        raw = f.read()
+
+    # Strip control characters that make Oracle XML invalid
+    raw = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", raw)
+
+    root = ET.fromstring(raw)
 
     # Pre-2020 XML uses different container tag names
     if year < "2020":
@@ -164,7 +170,7 @@ def main(year: str, write_db: bool) -> None:
     ops_batch: list[tuple] = []
     starts_batch: list[tuple] = []
 
-    for idx, g in enumerate(root.findall(f".//{op_tag}")):
+    for idx, g in enumerate(root.findall(f"LIST_G_RICHIEDENTE/{op_tag}")):
 
         # --- Operation fields ---------------------------------------------------
         raw_date = _text(g, "DATA_INTERVENTO")
