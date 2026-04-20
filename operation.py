@@ -15,6 +15,9 @@ class Operation:
         opn: str = "",
         nom: str = "",
         boss: str = "",
+        address: str = "",
+        caller: str = "",
+        operator: str = "",
     ):
         self.date = date
         self.exit = exit
@@ -25,6 +28,9 @@ class Operation:
         self.opn = opn
         self.nom = nom
         self.boss = boss
+        self.address = address
+        self.caller = self._parse_caller(caller)
+        self.operator = operator
         self.x = self._parse_coord(raw_x)
         self.y = self._parse_coord(raw_y)
 
@@ -40,6 +46,12 @@ class Operation:
         except ValueError:
             return "---"
 
+    def _parse_caller(self, raw: Optional[str]) -> str:
+        """Extract caller name from strings like 'Caller: John Doe'."""
+        if raw is None:
+            return "---"
+        return raw.split("Rich: ")[-1].strip()
+    
     def __repr__(self) -> str:
         return (
             f"Operation(opn={self.opn!r}, date={self.date!r}, exit={self.exit!r}, "

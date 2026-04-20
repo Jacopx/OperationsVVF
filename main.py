@@ -150,9 +150,11 @@ def main(year: str, write_db: bool) -> None:
 
     # Pre-2020 XML uses different container tag names
     if year < "2020":
+        list_tag = "LIST_G_1"
         op_tag = "G_1"
         start_tag = "G_INTERVENTO1"
     else:
+        list_tag = "LIST_G_RICHIEDENTE"
         op_tag = "G_RICHIEDENTE"
         start_tag = "G_FLAG_ANNULLA"
 
@@ -170,7 +172,7 @@ def main(year: str, write_db: bool) -> None:
     ops_batch: list[tuple] = []
     starts_batch: list[tuple] = []
 
-    for idx, g in enumerate(root.findall(f"LIST_G_RICHIEDENTE/{op_tag}")):
+    for idx, g in enumerate(root.findall(f"{list_tag}/{op_tag}")):
 
         # --- Operation fields ---------------------------------------------------
         raw_date = _text(g, "DATA_INTERVENTO")
@@ -184,6 +186,9 @@ def main(year: str, write_db: bool) -> None:
         opn = _text(g, "INTERVENTO")
         nom = _text(g, "NOMINATIVO")
         boss = _text(g, "CF_PROVA")
+        address = _text(g, "INDIRIZZO")
+        caller = _text(g, "RICHIEDENTE")
+        operator = _text(g, "NOMINATIVO")
 
         op = Operation(
             date=raw_date,
@@ -197,10 +202,13 @@ def main(year: str, write_db: bool) -> None:
             opn=opn,
             nom=nom,
             boss=boss,
+            address=address,
+            caller=caller,
+            operator=operator
         )
 
         print(
-            f"[{idx}] {op.opn} | {op.date} | {op.exit}-{op.close} | {op.typology} | ({op.x},{op.y}) | {op.loc} | {op.boss}"
+            f"[{idx}] {op.opn} | {op.date} | {op.exit}-{op.close} | {op.typology} | ({op.x},{op.y}) | {op.loc} | {op.boss} | {op.address} | {op.caller} | {op.operator}"
         )
 
         # --- Datetime computation -----------------------------------------------
@@ -230,6 +238,9 @@ def main(year: str, write_db: bool) -> None:
                 op.y,
                 op.loc,
                 op.boss,
+                op.address,
+                op.caller,
+                op.operator
             )
         )
 
@@ -283,8 +294,8 @@ def main(year: str, write_db: bool) -> None:
     if write_db and conn and cursor:
         try:
             cursor.executemany(
-                "INSERT INTO Operations (ID, year, opn, date, dt_exit, dt_close, typology, x, y, loc, boss) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO Operations (ID, year, opn, date, dt_exit, dt_close, typology, x, y, loc, boss, address, caller, operator) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 ops_batch,
             )
             cursor.executemany(
