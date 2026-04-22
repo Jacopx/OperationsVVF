@@ -3,6 +3,7 @@
 # *                 https://github.com/Jacopx/OperationsVVF                 *
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
+import os
 import sys
 import locale
 import datetime as dt
@@ -125,7 +126,7 @@ def _combine(base_date: dt.date, time_str: str, ref_seconds: int) -> dt.datetime
 # ---------------------------------------------------------------------------
 
 
-def main(year: str, write_db: bool) -> None:
+def main(xml_path: str) -> None:
     config = configparser.ConfigParser()
     config.read("config.ini")
 
@@ -135,9 +136,9 @@ def main(year: str, write_db: bool) -> None:
     host = config["DEFAULT"]["HOST"]
     port = config["DEFAULT"]["PORT"]
 
-    xml_path = f"XML/{db}/{year}.xml"
+    year = os.path.splitext(os.path.basename(xml_path))[0]
 
-    # Italian locale for date parsing (GEN, FEB, …)
+    # Italian locale for date parsing (GEN, FEB, ...)
     locale.setlocale(locale.LC_TIME, ("it", "UTF-8"))
 
     with open(xml_path, "r", encoding="utf-8", errors="replace") as f:
@@ -160,14 +161,13 @@ def main(year: str, write_db: bool) -> None:
 
     cursor = None
     conn = None
-    if write_db:
-        conn = mariadb.connect(
-            user=usr, password=pwd, host=host, port=int(port), database=db
-        )
-        cursor = conn.cursor()
-        cursor.execute(f"DELETE FROM Operations WHERE ID>=0 AND year='{year}'")
-        cursor.execute(f"DELETE FROM Starts     WHERE ID>=0 AND year='{year}'")
-        conn.commit()
+    conn = mariadb.connect(
+        user=usr, password=pwd, host=host, port=int(port), database=db
+    )
+    cursor = conn.cursor()
+    cursor.execute(f"DELETE FROM Operations WHERE ID>=0 AND year='{year}'")
+    cursor.execute(f"DELETE FROM Starts     WHERE ID>=0 AND year='{year}'")
+    conn.commit()
 
     ops_batch: list[tuple] = []
     starts_batch: list[tuple] = []
@@ -291,25 +291,24 @@ def main(year: str, write_db: bool) -> None:
 
     # --- Batch DB write ---------------------------------------------------------
     error_count = 0
-    if write_db and conn and cursor:
-        try:
-            cursor.executemany(
-                "INSERT INTO Operations (ID, year, opn, date, dt_exit, dt_close, typology, x, y, loc, boss, address, caller, operator) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                ops_batch,
-            )
-            cursor.executemany(
-                "INSERT INTO Starts (OpID, ID, year, vehicle, exit_dt, inplace_dt, back_dt, boss) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                starts_batch,
-            )
-            conn.commit()
-        except mariadb.Error as err:
-            error_count += 1
-            conn.rollback()
-            print(f"[ERROR] Batch insert failed: {err}", file=sys.stderr)
-        finally:
-            conn.close()
+    try:
+        cursor.executemany(
+            "INSERT INTO Operations (ID, year, opn, date, dt_exit, dt_close, typology, x, y, loc, boss, address, caller, operator) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            ops_batch,
+        )
+        cursor.executemany(
+            "INSERT INTO Starts (OpID, ID, year, vehicle, exit_dt, inplace_dt, back_dt, boss) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            starts_batch,
+        )
+        conn.commit()
+    except mariadb.Error as err:
+        error_count += 1
+        conn.rollback()
+        print(f"[ERROR] Batch insert failed: {err}", file=sys.stderr)
+    finally:
+        conn.close()
 
     print(
         f"\nDone. Operations: {len(ops_batch)} | Starts: {len(starts_batch)} | Errors: {error_count}"
@@ -317,8 +316,8 @@ def main(year: str, write_db: bool) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python main.py <year> <0|1>  (1 = write to DB)")
+    if len(sys.argv) < 2:
+        print("Usage: python main.py <absolute_xml_path>")
         sys.exit(1)
 
-    main(year=sys.argv[1], write_db=bool(int(sys.argv[2])))
+    main(xml_path=sys.argv[1])
