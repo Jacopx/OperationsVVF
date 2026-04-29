@@ -110,7 +110,8 @@ def _parse_date(date_str: str) -> dt.date:
 
 
 def _parse_time(time_str: str) -> dt.time:
-    return dt.datetime.strptime(time_str.replace(".", ":"), "%H:%M").time()
+    normalized = time_str.replace(".", ":").replace("/", ":")
+    return dt.datetime.strptime(normalized, "%H:%M").time()
 
 
 def _combine(base_date: dt.date, time_str: str, ref_seconds: int) -> dt.datetime:
@@ -149,15 +150,10 @@ def main(xml_path: str) -> None:
 
     root = ET.fromstring(raw)
 
-    # Pre-2020 XML uses different container tag names
-    if year < "2020":
-        list_tag = "LIST_G_1"
-        op_tag = "G_1"
-        start_tag = "G_INTERVENTO1"
-    else:
-        list_tag = "LIST_G_RICHIEDENTE"
-        op_tag = "G_RICHIEDENTE"
-        start_tag = "G_FLAG_ANNULLA"
+    
+    list_tag = "LIST_G_RICHIEDENTE"
+    op_tag = "G_RICHIEDENTE"
+    start_tag = "G_FLAG_ANNULLA"
 
     cursor = None
     conn = None
@@ -165,12 +161,13 @@ def main(xml_path: str) -> None:
         user=usr, password=pwd, host=host, port=int(port), database=db
     )
     cursor = conn.cursor()
-    cursor.execute(f"DELETE FROM Operations WHERE ID>=0 AND year='{year}'")
-    cursor.execute(f"DELETE FROM Starts     WHERE ID>=0 AND year='{year}'")
+    cursor.execute(f"DELETE FROM operations WHERE ID>=0 AND year='{year}'")
+    cursor.execute(f"DELETE FROM starts     WHERE ID>=0 AND year='{year}'")
     conn.commit()
 
     ops_batch: list[tuple] = []
     starts_batch: list[tuple] = []
+    parse_errors: list[str] = []
 
     for idx, g in enumerate(root.findall(f"{list_tag}/{op_tag}")):
 
@@ -212,18 +209,29 @@ def main(xml_path: str) -> None:
         )
 
         # --- Datetime computation -----------------------------------------------
-        base_date = _parse_date(op.date)
+        try:
+            base_date = _parse_date(op.date)
+        except (ValueError, TypeError) as e:
+            parse_errors.append(f"[{idx}] op={op.opn} — invalid date {op.date!r}: {e}")
+            continue
+
         ref_sec = 0  # fallback
 
         dt_exit = dt_close = None
 
         if op.exit:
-            t = _parse_time(op.exit)
-            ref_sec = t.hour * 3600 + t.minute * 60
-            dt_exit = dt.datetime.combine(base_date, t)
+            try:
+                t = _parse_time(op.exit)
+                ref_sec = t.hour * 3600 + t.minute * 60
+                dt_exit = dt.datetime.combine(base_date, t)
+            except (ValueError, TypeError) as e:
+                parse_errors.append(f"[{idx}] op={op.opn} — invalid exit time {op.exit!r}: {e}")
 
         if op.close and op.exit:
-            dt_close = _combine(base_date, op.close, ref_sec)
+            try:
+                dt_close = _combine(base_date, op.close, ref_sec)
+            except (ValueError, TypeError) as e:
+                parse_errors.append(f"[{idx}] op={op.opn} — invalid close time {op.close!r}: {e}")
 
         ops_batch.append(
             (
@@ -265,11 +273,20 @@ def main(xml_path: str) -> None:
             dt_s_exit = dt_s_inplace = dt_s_back = None
 
             if start.exit:
-                dt_s_exit = _combine(base_date, start.exit, ref_sec)
+                try:
+                    dt_s_exit = _combine(base_date, start.exit, ref_sec)
+                except (ValueError, TypeError) as e:
+                    parse_errors.append(f"  [{idx}/{j}] vehicle={start.vehicle} — invalid exit time {start.exit!r}: {e}")
             if start.inplace:
-                dt_s_inplace = _combine(base_date, start.inplace, ref_sec)
+                try:
+                    dt_s_inplace = _combine(base_date, start.inplace, ref_sec)
+                except (ValueError, TypeError) as e:
+                    parse_errors.append(f"  [{idx}/{j}] vehicle={start.vehicle} — invalid inplace time {start.inplace!r}: {e}")
             if start.back:
-                dt_s_back = _combine(base_date, start.back, ref_sec)
+                try:
+                    dt_s_back = _combine(base_date, start.back, ref_sec)
+                except (ValueError, TypeError) as e:
+                    parse_errors.append(f"  [{idx}/{j}] vehicle={start.vehicle} — invalid back time {start.back!r}: {e}")
 
             print(
                 f"  [{j}] {start.vehicle} | {start.exit} | {start.inplace} | {start.back} | {start.nom}"
@@ -293,12 +310,12 @@ def main(xml_path: str) -> None:
     error_count = 0
     try:
         cursor.executemany(
-            "INSERT INTO Operations (ID, year, opn, date, dt_exit, dt_close, typology, x, y, loc, boss, address, caller, operator) "
+            "INSERT INTO operations (ID, year, opn, date, dt_exit, dt_close, typology, x, y, loc, boss, address, caller, operator) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             ops_batch,
         )
         cursor.executemany(
-            "INSERT INTO Starts (OpID, ID, year, vehicle, exit_dt, inplace_dt, back_dt, boss) "
+            "INSERT INTO starts (OpID, ID, year, vehicle, exit_dt, inplace_dt, back_dt, boss) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
             starts_batch,
         )
@@ -313,6 +330,11 @@ def main(xml_path: str) -> None:
     print(
         f"\nDone. Operations: {len(ops_batch)} | Starts: {len(starts_batch)} | Errors: {error_count}"
     )
+
+    if parse_errors:
+        print(f"\n--- {len(parse_errors)} parse warning(s) (records skipped or fields set to NULL) ---", file=sys.stderr)
+        for msg in parse_errors:
+            print(f"  {msg}", file=sys.stderr)
 
 
 if __name__ == "__main__":
