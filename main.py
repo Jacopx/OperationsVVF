@@ -287,6 +287,7 @@ def main(xml_path: str) -> None:
         # --- Starts -------------------------------------------------------------
         for j, g_flag in enumerate(g.findall(f".//{start_tag}")):
             vehicle = _text(g_flag, "SIGLA_MEZZO")
+            s_date_raw = _text(g_flag, "DATA_SERVIZIO")
             s_exit = _text(g_flag, "ORA_USCITA1")
             s_inplace = _text(g_flag, "ORA_ARRIVO")
             s_back = _text(g_flag, "ORA_PARTENZA_LUOGO")
@@ -304,24 +305,30 @@ def main(xml_path: str) -> None:
 
             dt_s_exit = dt_s_inplace = dt_s_back = None
 
+            try:
+                s_date = _parse_date(s_date_raw)
+            except (ValueError, TypeError) as e:
+                parse_errors.append(f"op={op.opn} — invalid start date {s_date_raw!r}: {e}")
+                continue
+
             if start.exit:
                 try:
-                    dt_s_exit = _combine(base_date, start.exit, ref_sec)
+                    dt_s_exit = _combine(s_date, start.exit, ref_sec)
                 except (ValueError, TypeError) as e:
                     parse_errors.append(f"  [{year}/{idx}/{j}] vehicle={start.vehicle} — invalid exit time {start.exit!r}: {e}")
             if start.inplace:
                 try:
-                    dt_s_inplace = _combine(base_date, start.inplace, ref_sec)
+                    dt_s_inplace = _combine(s_date, start.inplace, ref_sec)
                 except (ValueError, TypeError) as e:
                     parse_errors.append(f"  [{year}/{idx}/{j}] vehicle={start.vehicle} — invalid inplace time {start.inplace!r}: {e}")
             if start.back:
                 try:
-                    dt_s_back = _combine(base_date, start.back, ref_sec)
+                    dt_s_back = _combine(s_date, start.back, ref_sec)
                 except (ValueError, TypeError) as e:
                     parse_errors.append(f"  [{year}/{idx}/{j}] vehicle={start.vehicle} — invalid back time {start.back!r}: {e}")
 
             print(
-                f"  [{j}] {start.vehicle} | {start.exit} | {start.inplace} | {start.back} | {start.nom}"
+                f"  [{j}] {start.vehicle} | {dt_s_exit} | {dt_s_inplace} | {dt_s_back} | {start.nom}"
             )
 
             starts_batch.append(
