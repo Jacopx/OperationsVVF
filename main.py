@@ -304,6 +304,8 @@ def main(xml_path: str) -> None:
             )
 
             dt_s_exit = dt_s_inplace = dt_s_back = None
+            dt_exit = dt_close = None
+            back_candidates = []   # <-- collects dt_s_back values for THIS operation only
 
             try:
                 s_date = _parse_date(s_date_raw)
@@ -324,6 +326,7 @@ def main(xml_path: str) -> None:
             if start.back:
                 try:
                     dt_s_back = _combine(s_date, start.back, ref_sec)
+                    back_candidates.append(dt_s_back) 
                 except (ValueError, TypeError) as e:
                     parse_errors.append(f"  [{year}/{idx}/{j}] vehicle={start.vehicle} — invalid back time {start.back!r}: {e}")
 
@@ -344,6 +347,9 @@ def main(xml_path: str) -> None:
                 )
             )
         print()
+
+    if back_candidates:
+        dt_close = max(back_candidates)
 
     # --- Batch DB write ---------------------------------------------------------
     error_count = 0
