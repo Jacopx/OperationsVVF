@@ -198,6 +198,9 @@ def main(xml_path: str) -> None:
 
     for g in root.findall(f"{list_tag}/{op_tag}"):
 
+        dt_exit = dt_close = None
+        back_candidates = []   # <-- collects dt_s_back values for THIS operation only
+
         # --- Operation fields ---------------------------------------------------
         raw_date = _text(g, "DATA_INTERVENTO")
         raw_exit = _text(g, "ORA_USCITA")
@@ -304,8 +307,6 @@ def main(xml_path: str) -> None:
             )
 
             dt_s_exit = dt_s_inplace = dt_s_back = None
-            dt_exit = dt_close = None
-            back_candidates = []   # <-- collects dt_s_back values for THIS operation only
 
             try:
                 s_date = _parse_date(s_date_raw)
